@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Barton 工作台 · 入口</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(135deg, #0f1a2e 0%, #1a2d4f 50%, #0a0f1a 100%);
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .container {
+      text-align: center;
+      padding: 40px;
+      max-width: 520px;
+    }
+    .logo {
+      font-size: 64px;
+      margin-bottom: 16px;
+      filter: drop-shadow(0 0 20px rgba(79, 172, 254, 0.6));
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      background: linear-gradient(90deg, #4facfe, #00f2fe);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.55);
+      margin-bottom: 40px;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: rgba(82, 196, 26, 0.15);
+      border: 1px solid rgba(82, 196, 26, 0.4);
+      border-radius: 20px;
+      font-size: 13px;
+      color: #52c41a;
+      margin-bottom: 32px;
+    }
+    .status.error { background: rgba(245, 34, 45, 0.15); border-color: rgba(245, 34, 45, 0.4); color: #ff7875; }
+    .status .dot {
+      width: 8px; height: 8px; border-radius: 50%; background: currentColor;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .btn {
+      display: inline-block;
+      padding: 14px 48px;
+      background: linear-gradient(135deg, #4facfe, #00f2fe);
+      color: #0f1a2e;
+      font-weight: 600;
+      font-size: 16px;
+      border-radius: 30px;
+      text-decoration: none;
+      transition: all 0.3s;
+      box-shadow: 0 8px 32px rgba(79, 172, 254, 0.3);
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(79, 172, 254, 0.5); }
+    .btn.disabled { background: #444; color: #888; cursor: not-allowed; box-shadow: none; }
+    .hint { margin-top: 24px; font-size: 12px; color: rgba(255, 255, 255, 0.35); line-height: 1.6; }
+    .countdown { color: #4facfe; font-weight: 600; }
+    .loading { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #4facfe; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .url { font-family: "SF Mono", Monaco, monospace; font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 12px; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">⚡</div>
+    <h1>Barton 工作台</h1>
+    <div class="subtitle">高效协作 · 多用户隔离 · AI 加持</div>
+
+    <div id="status" class="status">
+      <span class="loading"></span>
+      <span>正在获取最新服务地址…</span>
+    </div>
+
+    <div id="action">
+      <a id="enter-btn" class="btn disabled" href="#">进入系统</a>
+    </div>
+
+    <div class="hint" id="hint">
+      首次使用请自助注册账号<br>
+      如服务不可达，请联系 Barton
+    </div>
+    <div class="url" id="current-url"></div>
+  </div>
+
+  <script>
+    // 从同仓库 url.json 读取当前公网地址
+    const URL_SOURCE = 'url.json?t=' + Date.now();
+
+    async function init() {
+      const statusEl = document.getElementById('status');
+      const btnEl = document.getElementById('enter-btn');
+      const hintEl = document.getElementById('hint');
+      const urlEl = document.getElementById('current-url');
+
+      try {
+        const r = await fetch(URL_SOURCE, { cache: 'no-store' });
+        if (!r.ok) throw new Error('配置文件获取失败');
+        const cfg = await r.json();
+        const targetUrl = cfg.url;
+
+        if (!targetUrl) throw new Error('地址为空');
+
+        // 探测服务是否可达
+        const healthOk = await checkHealth(targetUrl);
+
+        if (healthOk) {
+          statusEl.className = 'status';
+          statusEl.innerHTML = '<span class="dot"></span><span>服务在线</span>';
+          btnEl.className = 'btn';
+          btnEl.href = targetUrl;
+          urlEl.textContent = targetUrl;
+
+          // 3秒后自动跳转
+          let countdown = 3;
+          hintEl.innerHTML = `<span class="countdown">${countdown}</span> 秒后自动跳转…`;
+          const timer = setInterval(() => {
+            countdown--;
+            if (countdown > 0) {
+              hintEl.innerHTML = `<span class="countdown">${countdown}</span> 秒后自动跳转…`;
+            } else {
+              clearInterval(timer);
+              window.location.href = targetUrl;
+            }
+          }, 1000);
+        } else {
+          throw new Error('服务暂时不可达');
+        }
+      } catch (err) {
+        statusEl.className = 'status error';
+        statusEl.innerHTML = '<span class="dot"></span><span>' + err.message + '</span>';
+        hintEl.innerHTML = 'Barton 的电脑可能休眠或断网了<br>请联系他开机后再试';
+      }
+    }
+
+    async function checkHealth(url) {
+      try {
+        const ctrl = new AbortController();
+        setTimeout(() => ctrl.abort(), 5000);
+        const r = await fetch(url + '/api/health', { signal: ctrl.signal, mode: 'cors' });
+        return r.ok;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
